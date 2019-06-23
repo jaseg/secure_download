@@ -7,16 +7,6 @@ import struct
 import subprocess
 import binascii
 
-def _pad(data, blocksize):
-    return (data + b'\x80' + b'\x00'*blocksize)[:blocksize]
-
-def _unpad(data):
-    data = data.rstrip(b'\0')
-    if data[-1] == 0x80:
-        return data[:-1]
-    else:
-        raise ValueError('Invalid padding!')
-
 def encrypt_file(filename_in):
     file_id = secrets.token_urlsafe(22)
     auth_secret = secrets.token_bytes(16)
@@ -27,26 +17,18 @@ def encrypt_file(filename_in):
     ciphertext, token_tag = token_cipher.encrypt_and_digest(key)
     token = base64.b64encode(ciphertext)
 
-    with open(filename_in, 'rb', buffering=8192) as fin, open(f'{file_id}.enc', 'wb', buffering=8192) as fout:
+    with open(f'{file_id}.enc', 'wb') as fout:
         fout.write(token_cipher.nonce) # 16 bytes
         fout.write(token_tag) # 16 bytes
         fout.write(auth_secret) # 16 bytes
         fout.write(cipher_nonce) # 8 bytes
+        fout.flush()
 
         subprocess.check_call(['openssl', 'enc', '-aes-128-ctr',
             '-K', binascii.hexlify(key),
-            '-iv', binascii.hexlify(cipher_nonce + '\0'*8)
-
-        data = fin.read(cipher.block_size) or None
-        while data is not None:
-            next_data = fin.read(cipher.block_size) or None
-            if not next_data: # padding required
-                if len(data) == cipher.block_size:
-                    next_data = b''
-                else:
-                    data = _pad(data, cipher.block_size)
-            fout.write(cipher.encrypt(data))
-            data = next_data
+            '-iv', binascii.hexlify(cipher_nonce + b'\0'*8), # nonce || counter format
+            '-in', filename_in, # no out: output defaults to stdout
+            ], stdout=fout.fileno())
 
     return file_id, token
 
@@ -68,17 +50,12 @@ def decrypt_generator(file_id, token, seek=0):
         fin.seek(seek - seek % cipher.block_size, 1)
         offset = seek % cipher.block_size
 
-        next_block = fin.read(cipher.block_size)
-        while next_block:
-            block = next_block
-            next_block = fin.read(cipher.block_size)
+        block = fin.read(cipher.block_size)
+        while block:
             data = cipher.decrypt(block)
-
-            if not next_block: # remove padding
-                data = _unpad(data)
-            
             yield data[offset:]
             offset = 0
+            block = fin.read(cipher.block_size)
 
 if __name__ == '__main__':
     import argparse
