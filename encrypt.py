@@ -7,34 +7,35 @@ import struct
 import subprocess
 import binascii
 
-def encrypt_file(filename_in):
+def encrypt_file(filename_in, chunk_size=1000000//16):
     file_id = secrets.token_urlsafe(22)
     auth_secret = secrets.token_bytes(16)
     key = secrets.token_bytes(16)
-    cipher_nonce = secrets.token_bytes(8)
+    data_nonce = secrets.token_bytes(8)
 
     token_cipher = AES.new(auth_secret, AES.MODE_GCM)
     ciphertext, token_tag = token_cipher.encrypt_and_digest(key)
     token = base64.b64encode(ciphertext)
 
-    with open(f'{file_id}.enc', 'wb') as fout:
+    with open(f'{file_id}.enc', 'wb') as fout, open(filename_in, 'rb') as fin:
         fout.write(token_cipher.nonce) # 16 bytes
         fout.write(token_tag) # 16 bytes
         fout.write(auth_secret) # 16 bytes
-        fout.write(cipher_nonce) # 8 bytes
-        fout.flush()
+        fout.write(data_nonce) # 8 bytes
 
-        subprocess.check_call(['openssl', 'enc', '-aes-128-ctr',
-            '-K', binascii.hexlify(key),
-            '-iv', binascii.hexlify(cipher_nonce + b'\0'*8), # nonce || counter format
-            '-in', filename_in, # no out: output defaults to stdout
-            ], stdout=fout.fileno())
+        cipher = AES.new(key, AES.MODE_CTR,
+                initial_value=struct.pack('<Q', 0), nonce=data_nonce)
+
+        block = fin.read(cipher.block_size*chunk_size)
+        while block:
+            data = cipher.encrypt(block)
+            fout.write(data)
+            block = fin.read(cipher.block_size*chunk_size)
 
     return file_id, token
 
-def decrypt_generator(file_id, token, seek=0):
-
-    with open(f'{file_id}.enc', 'rb', buffering=8192) as fin:
+def decrypt_generator(file_id, token, seek=0, chunk_size=1000000//16):
+    with open(f'{file_id}.enc', 'rb') as fin:
         token_nonce = fin.read(16)
         token_tag = fin.read(16)
         auth_secret = fin.read(16)
@@ -50,12 +51,12 @@ def decrypt_generator(file_id, token, seek=0):
         fin.seek(seek - seek % cipher.block_size, 1)
         offset = seek % cipher.block_size
 
-        block = fin.read(cipher.block_size)
+        block = fin.read(cipher.block_size*chunk_size)
         while block:
             data = cipher.decrypt(block)
             yield data[offset:]
             offset = 0
-            block = fin.read(cipher.block_size)
+            block = fin.read(cipher.block_size*chunk_size)
 
 if __name__ == '__main__':
     import argparse
