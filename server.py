@@ -18,25 +18,32 @@ def download(file_id, token, filename):
         abort(400, 'Invalid token format')
 
     path = f'{file_id}.enc'
+    if not os.path.isfile(path):
+        abort(403) # forbidden
+
     size = filecrypt.payload_size(path)
 
     range_header = re.match('^bytes=([0-9]+)-([0-9]*)$', request.headers.get('Range', ''))
     if not range_header:
-        response = Response(
-                filecrypt.decrypt_generator(path, token),
-                mimetype='application/octet-stream')
+        try:
+            generator = filecrypt.decrypt_generator(path, token)
+        except ValueError: # MAC check failed
+            abort(403) # forbidden
+
+        response = Response(generator, mimetype='application/octet-stream')
         response.headers['Content-Length'] = size
     else:
         range_start, range_end = range_header.groups()
         range_start = int(range_start)
         range_end = int(range_end) if range_end else size-1
         if range_start < 0 or range_end >= size or range_start >= range_end:
-            abort(416)
+            abort(416) # range not satisfiable
 
-        response = Response(
-                filecrypt.decrypt_generator(path, token, seek=range_start, end=range_end),
-                status = 206,
-                mimetype='application/octet-stream')
+        try:
+            generator = filecrypt.decrypt_generator(path, token, seek=range_start, end=range_end)
+        except ValueError: # MAC check failed
+            abort(403) # forbidden
+        response = Response(generator, status=206, mimetype='application/octet-stream')
         response.headers['Content-Range'] = f'bytes {range_start}-{range_end}/{size}'
         response.headers['Content-Length'] = range_end - range_start + 1
 
