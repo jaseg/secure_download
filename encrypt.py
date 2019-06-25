@@ -14,6 +14,7 @@ if __name__ == '__main__':
         print(f'{infile} is not a file or directory, exiting.')
         os.exit(2)
 
-    file_id, token = encrypt_file(args.infile)
-    print(f'/{file_id}/{token}/{os.path.basename(args.infile)}')
+    download_filename = os.path.basename(args.infile)
+    file_id, token = encrypt_file(args.infile, download_filename)
+    print(f'/{file_id}/{token}/{download_filename}')
     

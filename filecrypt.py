@@ -10,13 +10,14 @@ FILE_ID_LENGTH = 22
 TOKEN_LENGTH = 22
 HEADER_LENGTH = 56
 
-def encrypt_file(filename_in, chunk_size=1000000//16):
+def encrypt_file(filename_in, download_filename, chunk_size=1000000//16):
     file_id = secrets.token_urlsafe(16)
     auth_secret = secrets.token_bytes(16)
     key = secrets.token_bytes(16)
     data_nonce = secrets.token_bytes(8)
 
     token_cipher = AES.new(auth_secret, AES.MODE_GCM)
+    token_cipher.update(download_filename.encode())
     ciphertext, token_tag = token_cipher.encrypt_and_digest(key)
     token = base64.b64encode(ciphertext).rstrip(b'=').decode()
 
@@ -41,7 +42,7 @@ def encrypt_file(filename_in, chunk_size=1000000//16):
 def payload_size(path):
     return os.stat(path).st_size - HEADER_LENGTH
 
-def decrypt_generator(filename, token, seek=0, end=None, chunk_size=1000000//16):
+def decrypt_generator(filename, download_filename, token, seek=0, end=None, chunk_size=1000000//16):
     with open(filename, 'rb') as fin:
         token_nonce = fin.read(16)
         token_tag = fin.read(16)
@@ -51,6 +52,7 @@ def decrypt_generator(filename, token, seek=0, end=None, chunk_size=1000000//16)
 
     ciphertext = base64.b64decode(token + '='*((3-len(token)%3)%3))
     token_cipher = AES.new(auth_secret, AES.MODE_GCM, nonce=token_nonce)
+    token_cipher.update(download_filename.encode())
     key = token_cipher.decrypt_and_verify(ciphertext, token_tag)
 
     def generator():

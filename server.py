@@ -26,7 +26,7 @@ def download(file_id, token, filename):
     range_header = re.match('^bytes=([0-9]+)-([0-9]*)$', request.headers.get('Range', ''))
     if not range_header:
         try:
-            generator = filecrypt.decrypt_generator(path, token)
+            generator = filecrypt.decrypt_generator(path, filename, token)
         except ValueError: # MAC check failed
             abort(403) # forbidden
 
@@ -40,7 +40,7 @@ def download(file_id, token, filename):
             abort(416) # range not satisfiable
 
         try:
-            generator = filecrypt.decrypt_generator(path, token, seek=range_start, end=range_end)
+            generator = filecrypt.decrypt_generator(path, filename, token, seek=range_start, end=range_end)
         except ValueError: # MAC check failed
             abort(403) # forbidden
         response = Response(generator, status=206, mimetype='application/octet-stream')
