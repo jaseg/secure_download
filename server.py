@@ -8,6 +8,7 @@ from flask import Flask, abort, request, Response
 import filecrypt
 
 app = Flask(__name__)
+app.config.from_envvar('SECURE_DOWNLOAD_SETTINGS')
 BASE64_RE = re.compile('^[A-Za-z0-9+-_]+=*$')
 
 @app.route('/<file_id>/<token>/<filename>')
@@ -17,7 +18,7 @@ def download(file_id, token, filename):
     if not BASE64_RE.match(token) or len(token) != filecrypt.TOKEN_LENGTH:
         abort(400, 'Invalid token format')
 
-    path = f'{file_id}.enc'
+    path = f'{app.config["SERVE_PATH"]}/{file_id}.enc'
     if not os.path.isfile(path):
         abort(403) # forbidden
 
