@@ -14,6 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('infile')
     parser.add_argument('-c', '--config', default=None, help='Config file location (default; $XDG_CONFIG_HOME/filecrypt.conf)')
     parser.add_argument('-b', '--base-url', default=None, help='Base URL for link (also as config option)')
+    parser.add_argument('-f', '--filename', default=None, help='Download filename (default: Same as input filename)')
     parser.add_argument('-q', '--no-progress', action='store_true', help='Hide progress bar')
     parser.add_argument('-p', '--progress', action='store_true', help='Show progress bar (default, also as config option)')
     args = parser.parse_args()
@@ -35,7 +36,7 @@ if __name__ == '__main__':
         print(f'{infile} is not a file or directory, exiting.')
         os.exit(2)
 
-    download_filename = os.path.basename(args.infile)
+    download_filename = args.filename or os.path.basename(args.infile)
 
     file_id, token, encrypt = generate_keys(download_filename)
     print(f'{base_url}/{file_id}/{token}/{download_filename}')
