@@ -46,6 +46,5 @@ if __name__ == '__main__':
             for progress in encrypt(args.infile):
                 pbar.update(progress)
     else:
-        for _progress in encrypt(args.infile):
-            pass
+        *encrypt(args.infile),
     

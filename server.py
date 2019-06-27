@@ -48,6 +48,7 @@ def download(file_id, token, filename):
         response.headers['Content-Range'] = f'bytes {range_start}-{range_end}/{size}'
         response.headers['Content-Length'] = range_end - range_start + 1
 
+    print(f'{request.remote_addr}: {file_id} OK')
     response.headers['Accept-Ranges'] = 'bytes'
     response.headers['Content-Disposition'] = f'attachment {filename}'
     return response
