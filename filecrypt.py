@@ -4,11 +4,18 @@ import base64
 import struct
 import subprocess
 import binascii
+import hashlib
 import os
 from contextlib import contextmanager
 
-FILE_ID_LENGTH = 22
-TOKEN_LENGTH = 22
+token_b64decode = lambda token: base64.b64decode(token + '='*((3-len(token)%3)%3), b'+-')
+token_b64encode = lambda token: base64.b64encode(token, b'+-').rstrip(b'=').decode()
+token_b64len    = lambda nbytes: len(token_b64encode(b'0' * nbytes))
+
+key_id = lambda key: token_b64encode(hashlib.sha3_256(b'FILECRYPT_KEY_ID'+key).digest())
+
+FILE_ID_LENGTH = token_b64len(16)
+TOKEN_LENGTH = token_b64len(16)
 HEADER_LENGTH = 56
 
 def generate_keys(download_filename, chunk_size=1000000//16):
@@ -20,7 +27,7 @@ def generate_keys(download_filename, chunk_size=1000000//16):
     token_cipher = AES.new(auth_secret, AES.MODE_GCM)
     token_cipher.update(download_filename.encode())
     ciphertext, token_tag = token_cipher.encrypt_and_digest(key)
-    token = base64.b64encode(ciphertext, b'+-').rstrip(b'=').decode()
+    token = token_b64encode(ciphertext)
 
     def encrypt(filename_in):
         with open(f'{file_id}.enc', 'wb') as fout, open(filename_in, 'rb') as fin:
@@ -37,13 +44,16 @@ def generate_keys(download_filename, chunk_size=1000000//16):
             while block:
                 data = cipher.encrypt(block)
                 fout.write(data)
-                yield len(data)
+                yield data
                 block = fin.read(cipher.block_size*chunk_size)
 
     return file_id, token, encrypt
 
 def payload_size(path):
     return os.stat(path).st_size - HEADER_LENGTH
+
+def output_size(path):
+    return os.stat(path).st_size + HEADER_LENGTH
 
 def decrypt_generator(filename, download_filename, token, seek=0, end=None, chunk_size=1000000//16):
     with open(filename, 'rb') as fin:
@@ -53,7 +63,7 @@ def decrypt_generator(filename, download_filename, token, seek=0, end=None, chun
         data_nonce = fin.read(8)
         assert fin.tell() == HEADER_LENGTH
 
-    ciphertext = base64.b64decode(token + '='*((3-len(token)%3)%3), b'+-')
+    ciphertext = token_b64decode(token)
     token_cipher = AES.new(auth_secret, AES.MODE_GCM, nonce=token_nonce)
     token_cipher.update(download_filename.encode())
     key = token_cipher.decrypt_and_verify(ciphertext, token_tag)
